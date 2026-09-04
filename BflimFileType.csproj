@@ -1,0 +1,41 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- <Target Name="CopyToFileTypes" AfterTargets="Build">
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="C:\Program Files\Paint.NET\FileTypes" />
+  </Target> -->
+
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="PaintDotNet.Base">
+      <HintPath>libs\PaintDotNet.Base.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="PaintDotNet.Core">
+      <HintPath>libs\PaintDotNet.Core.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="PaintDotNet.Data">
+      <HintPath>libs\PaintDotNet.Data.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="PaintDotNet.Fundamentals">
+      <HintPath>libs\PaintDotNet.Fundamentals.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="PaintDotNet.SystemLayer">
+      <HintPath>libs\PaintDotNet.SystemLayer.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="PaintDotNet.Primitives">
+      <HintPath>libs\PaintDotNet.Primitives.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>
