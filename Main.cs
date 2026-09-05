@@ -3,6 +3,11 @@ using System.IO;
 using PaintDotNet;
 using BflimFileType;
 using System.Drawing.Imaging;
+using Wiiu;
+using BCnEncoder.Decoder;
+using BCnEncoder.Shared;
+using CommunityToolkit.HighPerformance;
+using System.Linq;
 
 namespace BflimFileType
 {
@@ -34,14 +39,15 @@ namespace BflimFileType
             headerOffset = input.Length - 0x28;
 
             input.Seek(headerOffset, SeekOrigin.Begin);
-            byte[] magic = new byte[6];
-            input.Read(magic, 0, 6);
+            byte[] magic = new byte[0x14];
+            input.Read(magic, 0, 0x14);
 
             // FLIM in Ascii
             if (magic[0] == 0x46 && magic[1] == 0x4C && magic[2] == 0x49 && magic[3] == 0x4D)
             {
                 if(magic[4] == 0xFE && magic[5] == 0xFF)
                 {
+                    fileVersion = BinaryUtils.read32(magic, 0x08);
                     return true;
                 }
                 throw new FormatException("Little Endian is not supported");
@@ -72,6 +78,7 @@ namespace BflimFileType
 
             imageWidth = BinaryUtils.Read16(buffer, (int)bufferOffset + 0x08);
             imageHeight = BinaryUtils.Read16(buffer, (int)bufferOffset + 0x0A);
+            fileAlign = BinaryUtils.Read16(buffer, (int)bufferOffset + 0x0C);
 
             byte FormatID = buffer[(int)bufferOffset + 0x0E];
 
@@ -86,26 +93,126 @@ namespace BflimFileType
 
             byte tileModeSwizzle = buffer[(int)bufferOffset + 0x0F];
 
-            tileMode = tileModeSwizzle & 0x1F;
-            System.Windows.Forms.MessageBox.Show($"tileMode: {tileMode}");
-            swizzle = (tileModeSwizzle >> 5) & 0x07;
+            tileMode = (uint)tileModeSwizzle & 0x1F;
+            swizzle = (uint)(tileModeSwizzle >> 5) & 0x07;
 
-            pipeSwizzle = (swizzle >> 0) & 0x01;  
-            bankSwizzle = (swizzle >> 1) & 0x03;  
+            pipeSwizzle = (int)(swizzle >> 0) & 0x01;  
+            bankSwizzle = (int)(swizzle >> 1) & 0x03;  
+
+            byte[] textureData = new byte[input.Length - 0x28];
+            input.Seek(0, SeekOrigin.Begin);
+            input.Read(textureData, 0, (int)input.Length - 0x28);
+
+            GX2.GX2Surface surface = new GX2.GX2Surface();
+            surface.bpp = format.BPP;
+            surface.height = imageHeight;
+            surface.width = imageWidth;
+            surface.aa = (uint)GX2.GX2AAMode.GX2_AA_MODE_1X;
+            surface.depth = 1;
+            surface.dim = (uint)GX2.GX2SurfaceDimension.DIM_2D;
+            surface.format = (uint)BflimToGX2(format.ID);
+            surface.use = (uint)GX2.GX2SurfaceUse.USE_COLOR_BUFFER;
+            surface.pitch = 0;
+            surface.data = textureData;
+            surface.numMips = 1;
+            surface.mipOffset = new uint[0];
+            surface.mipData = textureData;
+            surface.tileMode = tileMode;
+            surface.swizzle = swizzle << 8;
+            surface.numArray = 1;
+
+            byte[] decodedData = GX2.Decode(surface, 0, 0);
+
+            BcDecoder decoder = new BcDecoder();
+            Memory2D<ColorRgba32> pixels = decoder.DecodeRaw2D(decodedData, (int)imageWidth, (int)imageHeight, CompressionFormat.Bc3);
 
             Document file = new Document(imageWidth,imageHeight);
-            BitmapLayer dummyLayer = Layer.CreateBackgroundLayer(imageWidth, imageHeight);
-            file.Layers.Add(dummyLayer);
+            BitmapLayer layer = Layer.CreateBackgroundLayer(imageWidth, imageHeight);
+            Surface layerSurface = layer.Surface;
+            Span2D<ColorRgba32> pixelSpan = pixels.Span;
+
+            for (int y = 0; y < imageHeight; y++)
+            {
+                for (int x = 0; x < imageWidth; x++)
+                {
+                    ColorRgba32 px = pixelSpan[y, x];
+                    layerSurface[x, y] = ColorBgra.FromBgra(px.b, px.g, px.r, px.a);
+                }
+            }
+            file.Layers.Add(layer);
             return file;
+        }
+
+        private GX2.GX2SurfaceFormat BflimToGX2(byte bflimformat)
+        {
+            switch(bflimformat)
+            {
+                case 0x00: return GX2.GX2SurfaceFormat.TC_R8_UNORM;
+                case 0x0E: return GX2.GX2SurfaceFormat.T_BC3_UNORM;
+            }
+            throw new FormatException("Format not supported yet");
+        }
+
+        private byte[] writeHeader(uint filesize, ushort width, ushort height)
+        {
+            byte[] header = new byte[0x14];
+            header[0x00] = 0x46; // F
+            header[0x01] = 0x4C; // L
+            header[0x02] = 0x49; // I
+            header[0x03] = 0x4D; // M
+
+            header[0x04] = 0xFE;
+            header[0x05] = 0xFF;
+
+            BinaryUtils.write16(header, 0x06, 0x14);
+            BinaryUtils.write32(header, 0x08, fileVersion);
+            BinaryUtils.write32(header, 0x0C, filesize);
+
+            BinaryUtils.write16(header, 0x10, 0x1);
+            BinaryUtils.write16(header, 0x12, 0x00); // padding
+
+            // Image Information:
+            byte[] imageInfo = new byte[0x14];
+            imageInfo[0x00] = 0x69; // i
+            imageInfo[0x01] = 0x6D; // m
+            imageInfo[0x02] = 0x61; // a
+            imageInfo[0x03] = 0x67; // g
+
+            BinaryUtils.write32(imageInfo, 0x04, 0x10);
+            BinaryUtils.write16(imageInfo, 0x08, width);
+            BinaryUtils.write16(imageInfo, 0x0A, height);
+            BinaryUtils.write16(imageInfo, 0x0C, fileAlign);
+            imageInfo[0x0E] = format.ID;
+
+            uint swizzle = ((uint)pipeSwizzle & 0x01) | (((uint)bankSwizzle & 0x03) << 1);
+            byte tileModeSwizzle = (byte)(((swizzle & 0x07) << 5) | (tileMode & 0x1F));
+
+            imageInfo[0x0F] = tileModeSwizzle;
+
+            BinaryUtils.write32(imageInfo, 0x10, filesize - 0x28);
+
+            byte[] whole = header.Concat(imageInfo).ToArray();
+
+            return whole;
+        }
+
+        private byte[] constructFileData(long textureSize, ushort width, ushort height)
+        {
+            byte[] header = writeHeader((uint)textureSize + 0x28, width, height);
+            byte[] data = new byte[textureSize + 0x28]; 
+
+            return data;
         }
 
         private ushort imageHeight;
         private ushort imageWidth;
-        private int tileMode;
-        private int swizzle;
+        private uint tileMode;
+        private uint swizzle;
         private int pipeSwizzle; 
         private int bankSwizzle; 
         private long headerOffset;
+        private uint fileVersion;
+        private ushort fileAlign;
 
         private FormatTemplate format;
 
@@ -126,7 +233,14 @@ namespace BflimFileType
             Surface scratchSurface,
             ProgressEventHandler progressCallback)
         {
-            
+            input.Flatten(scratchSurface);
+
+            long rawDataSize = (long)scratchSurface.Width * scratchSurface.Height * 4;
+            byte[] file = constructFileData(rawDataSize, (ushort)scratchSurface.Width, (ushort)scratchSurface.Height);
+
+            output.Write(file, 0, file.Length);
+
+            progressCallback?.Invoke(this, new ProgressEventArgs(100.0));
         }
     };
 }
