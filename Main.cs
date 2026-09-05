@@ -124,51 +124,37 @@ namespace BflimFileType
 
             byte[] decodedData = GX2.Decode(surface, 0, 0);
 
+            Document file = new Document(imageWidth,imageHeight);
+            BitmapLayer layer = Layer.CreateBackgroundLayer(imageWidth, imageHeight);
+            BcDecoder decoder = new BcDecoder();
+            Memory2D<ColorRgba32> pixels = decoder.DecodeRaw2D(decodedData, (int)imageWidth, (int)imageHeight, CompressionFormat.Bc3);
+
             if(format.ID == 0x0E) // BC3
             {
-                BcDecoder decoder = new BcDecoder();
-                Memory2D<ColorRgba32> pixels = decoder.DecodeRaw2D(decodedData, (int)imageWidth, (int)imageHeight, CompressionFormat.Bc3);
-
-                Document file = new Document(imageWidth,imageHeight);
-                BitmapLayer layer = Layer.CreateBackgroundLayer(imageWidth, imageHeight);
-                Surface layerSurface = layer.Surface;
-                Span2D<ColorRgba32> pixelSpan = pixels.Span;
-
-                for (int y = 0; y < imageHeight; y++)
-                {
-                    for (int x = 0; x < imageWidth; x++)
-                    {
-                        ColorRgba32 px = pixelSpan[y, x];
-                        layerSurface[x, y] = ColorBgra.FromBgra(px.b, px.g, px.r, px.a);
-                    }
-                }
-
-                file.Layers.Add(layer);
-                return file;
+                pixels = decoder.DecodeRaw2D(decodedData, (int)imageWidth, (int)imageHeight, CompressionFormat.Bc3);
             }
             else if(format.ID == 0x09) // RGBA8
             {
-                BcDecoder decoder = new BcDecoder();
-                Memory2D<ColorRgba32> pixels = decoder.DecodeRaw2D(decodedData, (int)imageWidth, (int)imageHeight, CompressionFormat.Rgba);
-
-                Document file = new Document(imageWidth, imageHeight);
-                BitmapLayer layer = Layer.CreateBackgroundLayer(imageWidth, imageHeight);
-                Surface layerSurface = layer.Surface;
-                Span2D<ColorRgba32> pixelSpan = pixels.Span;
-
-                for (int y = 0; y < imageHeight; y++)
-                {
-                    for (int x = 0; x < imageWidth; x++)
-                    {
-                        ColorRgba32 px = pixelSpan[y, x];
-                        layerSurface[x, y] = ColorBgra.FromBgra(px.b, px.g, px.r, px.a);
-                    }
-                }
-
-                file.Layers.Add(layer);
-                return file;
+                pixels = decoder.DecodeRaw2D(decodedData, (int)imageWidth, (int)imageHeight, CompressionFormat.Rgba);
             }
-            return new Document(0,0);
+            else if(format.ID == 0x11) // BC5
+            {
+                pixels = decoder.DecodeRaw2D(decodedData, (int)imageWidth, (int)imageHeight, CompressionFormat.Bc5);
+            }
+
+            Surface layerSurface = layer.Surface;
+            Span2D<ColorRgba32> pixelSpan = pixels.Span;
+
+            for (int y = 0; y < imageHeight; y++)
+            {
+                for (int x = 0; x < imageWidth; x++)
+                {
+                    ColorRgba32 px = pixelSpan[y, x];
+                    layerSurface[x, y] = ColorBgra.FromBgra(px.b, px.g, px.r, px.a);
+                }
+            }
+            file.Layers.Add(layer);
+            return file;
         }
 
         private GX2.GX2SurfaceFormat BflimToGX2(byte bflimformat)
@@ -178,6 +164,7 @@ namespace BflimFileType
                 case 0x00: return GX2.GX2SurfaceFormat.TC_R8_UNORM;
                 case 0x09: return GX2.GX2SurfaceFormat.TCS_R8_G8_B8_A8_UNORM;
                 case 0x0E: return GX2.GX2SurfaceFormat.T_BC3_UNORM;
+                case 0x11: return GX2.GX2SurfaceFormat.T_BC5_UNORM;
             }
             throw new FormatException("Format not supported yet");
         }
@@ -284,7 +271,7 @@ namespace BflimFileType
             {
                 BcEncoder encoder = new BcEncoder();
                 encoder.OutputOptions.Format = CompressionFormat.Rgba;
-                
+
                 byte[][] mips = encoder.EncodeToRawBytes(rgbaBytes, paddedWidth, paddedHeight, BCnEncoder.Encoder.PixelFormat.Rgba32);
                 byte[] encodedBc3 = mips[0];
 
