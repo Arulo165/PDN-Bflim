@@ -8,6 +8,7 @@ using BCnEncoder.Decoder;
 using BCnEncoder.Shared;
 using CommunityToolkit.HighPerformance;
 using System.Linq;
+using BCnEncoder.Encoder;
 
 namespace BflimFileType
 {
@@ -196,12 +197,58 @@ namespace BflimFileType
             return whole;
         }
 
-        private byte[] constructFileData(long textureSize, ushort width, ushort height)
+        private byte[] constructFileData(Surface scratchSurface)
         {
-            byte[] header = writeHeader((uint)textureSize + 0x28, width, height);
-            byte[] data = new byte[textureSize + 0x28]; 
+            int realWidth = scratchSurface.Width;
+            int realHeight = scratchSurface.Height;
 
-            return data;
+            var surfInfo = GX2.getSurfaceInfo(
+                BflimToGX2(format.ID),
+                (uint)realWidth,
+                (uint)realHeight,
+                1,
+                (uint)GX2.GX2SurfaceDimension.DIM_2D,
+                tileMode,
+                (uint)GX2.GX2AAMode.GX2_AA_MODE_1X,
+                0);
+
+            int paddedWidth = (int)surfInfo.pitch * 4;
+            int paddedHeight = (int)surfInfo.height * 4;
+
+            byte[] rgbaBytes = new byte[paddedWidth * paddedHeight * 4];
+
+            for (int y = 0; y < realHeight; y++)
+            {
+                for (int x = 0; x < realWidth; x++)
+                {
+                    ColorBgra px = scratchSurface[x, y];
+                    int index = (y * paddedWidth + x) * 4;
+
+                    rgbaBytes[index + 0] = px.R;
+                    rgbaBytes[index + 1] = px.G;
+                    rgbaBytes[index + 2] = px.B;
+                    rgbaBytes[index + 3] = px.A;
+                }
+            }
+
+            BcEncoder encoder = new BcEncoder();
+            encoder.OutputOptions.Format = CompressionFormat.Bc3;
+            byte[][] mips = encoder.EncodeToRawBytes(rgbaBytes, paddedWidth, paddedHeight, BCnEncoder.Encoder.PixelFormat.Rgba32);
+            byte[] encodedBc3 = mips[0];
+
+            byte[] swizzledData = GX2.swizzle(
+                (uint)paddedWidth, (uint)paddedHeight,
+                surfInfo.depth, surfInfo.height,
+                (uint)BflimToGX2(format.ID), 0,
+                (uint)GX2.GX2SurfaceUse.USE_COLOR_BUFFER,
+                surfInfo.tileMode, swizzle << 8,
+                surfInfo.pitch, surfInfo.bpp,
+                0, 0, encodedBc3);
+
+            byte[] header = writeHeader((uint)swizzledData.Length + 0x28, (ushort)realWidth, (ushort)realHeight);
+
+            byte[] finalFile = swizzledData.Concat(header).ToArray();
+            return finalFile;
         }
 
         private ushort imageHeight;
@@ -235,8 +282,11 @@ namespace BflimFileType
         {
             input.Flatten(scratchSurface);
 
-            long rawDataSize = (long)scratchSurface.Width * scratchSurface.Height * 4;
-            byte[] file = constructFileData(rawDataSize, (ushort)scratchSurface.Width, (ushort)scratchSurface.Height);
+            uint blockWidth = ((uint)scratchSurface.Width + 3) / 4;
+            uint blockHeight = ((uint)scratchSurface.Height + 3) / 4;
+            long rawDataSize = blockWidth * blockHeight * 16;
+
+            byte[] file = constructFileData(scratchSurface);
 
             output.Write(file, 0, file.Length);
 
