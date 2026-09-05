@@ -259,24 +259,50 @@ namespace BflimFileType
                 }
             }
 
-            BcEncoder encoder = new BcEncoder();
-            encoder.OutputOptions.Format = CompressionFormat.Bc3;
-            byte[][] mips = encoder.EncodeToRawBytes(rgbaBytes, paddedWidth, paddedHeight, BCnEncoder.Encoder.PixelFormat.Rgba32);
-            byte[] encodedBc3 = mips[0];
+            if(format.ID == 0x0E)
+            {
+                BcEncoder encoder = new BcEncoder();
+                encoder.OutputOptions.Format = CompressionFormat.Bc3;
+                byte[][] mips = encoder.EncodeToRawBytes(rgbaBytes, paddedWidth, paddedHeight, BCnEncoder.Encoder.PixelFormat.Rgba32);
+                byte[] encodedBc3 = mips[0];
 
-            byte[] swizzledData = GX2.swizzle(
-                (uint)paddedWidth, (uint)paddedHeight,
-                surfInfo.depth, surfInfo.height,
-                (uint)BflimToGX2(format.ID), 0,
-                (uint)GX2.GX2SurfaceUse.USE_COLOR_BUFFER,
-                surfInfo.tileMode, swizzle << 8,
-                surfInfo.pitch, surfInfo.bpp,
-                0, 0, encodedBc3);
+                byte[] swizzledData = GX2.swizzle(
+                    (uint)paddedWidth, (uint)paddedHeight,
+                    surfInfo.depth, surfInfo.height,
+                    (uint)BflimToGX2(format.ID), 0,
+                    (uint)GX2.GX2SurfaceUse.USE_COLOR_BUFFER,
+                    surfInfo.tileMode, swizzle << 8,
+                    surfInfo.pitch, surfInfo.bpp,
+                    0, 0, encodedBc3);
 
-            byte[] header = writeHeader((uint)swizzledData.Length + 0x28, (ushort)realWidth, (ushort)realHeight);
+                byte[] header = writeHeader((uint)swizzledData.Length + 0x28, (ushort)realWidth, (ushort)realHeight);
 
-            byte[] finalFile = swizzledData.Concat(header).ToArray();
-            return finalFile;
+                byte[] finalFile = swizzledData.Concat(header).ToArray();
+                return finalFile;
+            }
+            if(format.ID == 0x09)
+            {
+                BcEncoder encoder = new BcEncoder();
+                encoder.OutputOptions.Format = CompressionFormat.Rgba;
+                
+                byte[][] mips = encoder.EncodeToRawBytes(rgbaBytes, paddedWidth, paddedHeight, BCnEncoder.Encoder.PixelFormat.Rgba32);
+                byte[] encodedBc3 = mips[0];
+
+                byte[] swizzledData = GX2.swizzle(
+                    (uint)paddedWidth, (uint)paddedHeight,
+                    surfInfo.depth, surfInfo.height,
+                    (uint)BflimToGX2(format.ID), 0,
+                    (uint)GX2.GX2SurfaceUse.USE_COLOR_BUFFER,
+                    surfInfo.tileMode, swizzle << 8,
+                    surfInfo.pitch, surfInfo.bpp,
+                    0, 0, encodedBc3);
+
+                byte[] header = writeHeader((uint)swizzledData.Length + 0x28, (ushort)realWidth, (ushort)realHeight);
+
+                byte[] finalFile = swizzledData.Concat(header).ToArray();
+                return finalFile;
+            }
+            return null;
         }
 
         private ushort imageHeight;
