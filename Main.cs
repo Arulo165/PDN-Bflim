@@ -164,7 +164,6 @@ namespace BflimFileType
                 case 0x00: return GX2.GX2SurfaceFormat.TC_R8_UNORM;
                 case 0x09: return GX2.GX2SurfaceFormat.TCS_R8_G8_B8_A8_UNORM;
                 case 0x0E: return GX2.GX2SurfaceFormat.T_BC3_UNORM;
-                case 0x11: return GX2.GX2SurfaceFormat.T_BC5_UNORM;
             }
             throw new FormatException("Format not supported yet");
         }
