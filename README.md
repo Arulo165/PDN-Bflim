@@ -1,6 +1,6 @@
 ![Logo](bflimReader_LOGO.png)
 
-# Paint.Net Bflim plugins
+# Paint.Net Bflim plugin
 This is a plugin to import and export bflim files into Paint.net
 
 # How to Install
