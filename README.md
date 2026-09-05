@@ -1,3 +1,5 @@
+![Logo](bflimReader_LOGO.png)
+
 # Bloopaint
 Paint.Net plugin for Editing Bflim Files
 
